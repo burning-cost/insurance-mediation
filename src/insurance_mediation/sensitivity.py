@@ -199,7 +199,7 @@ def _nie_at_rho(
             data, treatment_col, control_value, mediator_col
         )
         y_obs = data.get(outcome_model.formula.split("~")[0].strip()
-                         if outcome_model.formula else "outcome", pd.Series())
+                         if outcome_model.formula else "outcome", pd.Series(dtype=float))
         sigma_y = 1.0  # normalised for GLMs
     else:
         sigma_y = 1.0

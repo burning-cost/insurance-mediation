@@ -372,10 +372,10 @@ class MediatorModel:
 
         if self.model_type == "linear":
             noise = rng.normal(0, self._residual_std, size=(n_samples, n_obs))
-            return mu[np.newaxis, :] + noise
+            return mu.to_numpy()[np.newaxis, :] + noise
         elif self.model_type == "logistic":
             u = rng.uniform(size=(n_samples, n_obs))
-            return (u < mu[np.newaxis, :]).astype(float)
+            return (u < mu.to_numpy()[np.newaxis, :]).astype(float)
         else:
             raise ValueError(f"Unknown model_type: {self.model_type}")
 
