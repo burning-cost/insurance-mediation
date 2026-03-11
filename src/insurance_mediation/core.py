@@ -190,7 +190,7 @@ class MediationAnalysis:
             build_outcome_model, build_mediator_model,
         )
         from insurance_mediation.estimators import (
-            estimate_cde, estimate_nde_nie, estimate_total_effect,
+            estimate_cde, estimate_nde_nie,
         )
         from insurance_mediation.estimands import MediationResult
 
@@ -253,22 +253,8 @@ class MediationAnalysis:
                 [10, 25, 50, 75, 90]
             ))
 
-        # Estimate all effects
-        # Total Effect
-        te = estimate_total_effect(
-            data=data,
-            outcome_model=outcome_model,
-            treatment_col=treatment,
-            mediator_col=mediator,
-            treatment_value=treatment_value,
-            control_value=control_value,
-            n_bootstrap=self.n_bootstrap,
-            ci_level=self.ci_level,
-            rng=rng,
-        )
-
-        # NDE / NIE
-        nde, nie = estimate_nde_nie(
+        # Estimate NDE, NIE, and TE together (TE uses treatment-specific M distributions)
+        nde, nie, te = estimate_nde_nie(
             data=data,
             outcome_model=outcome_model,
             mediator_model=mediator_model,

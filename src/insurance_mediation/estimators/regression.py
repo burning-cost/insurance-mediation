@@ -236,7 +236,7 @@ def estimate_nde_nie(
     n_bootstrap: int = 200,
     ci_level: float = 0.95,
     rng: np.random.Generator | None = None,
-) -> tuple["EffectEstimate", "EffectEstimate"]:
+) -> tuple["EffectEstimate", "EffectEstimate", "EffectEstimate"]:
     """Estimate Natural Direct Effect and Natural Indirect Effect.
 
     Uses Monte Carlo integration over the mediator distribution.
@@ -271,8 +271,8 @@ def estimate_nde_nie(
     if rng is None:
         rng = np.random.default_rng(42)
 
-    # Point estimates
-    nde_point, nie_point = _nde_nie_point(
+    # Point estimates (te computed consistently with NDE/NIE)
+    nde_point, nie_point, te_point = _nde_nie_point(
         data, outcome_model, mediator_model,
         treatment_col, mediator_col,
         treatment_value, control_value,
@@ -282,6 +282,7 @@ def estimate_nde_nie(
     # Bootstrap
     nde_boot = []
     nie_boot = []
+    te_boot = []
     for _ in range(n_bootstrap):
         idx = rng.integers(0, len(data), size=len(data))
         boot_data = data.iloc[idx].reset_index(drop=True)
@@ -289,7 +290,7 @@ def estimate_nde_nie(
             boot_outcome = _refit_outcome(outcome_model, boot_data)
             boot_mediator = _refit_mediator(mediator_model, boot_data)
             boot_rng = np.random.default_rng(rng.integers(0, 2**31))
-            b_nde, b_nie = _nde_nie_point(
+            b_nde, b_nie, b_te = _nde_nie_point(
                 boot_data, boot_outcome, boot_mediator,
                 treatment_col, mediator_col,
                 treatment_value, control_value,
@@ -298,6 +299,7 @@ def estimate_nde_nie(
             )
             nde_boot.append(b_nde)
             nie_boot.append(b_nie)
+            te_boot.append(b_te)
         except Exception:
             continue
 
@@ -314,6 +316,14 @@ def estimate_nde_nie(
     else:
         nde_ci = (np.nan, np.nan)
         nie_ci = (np.nan, np.nan)
+
+    if len(te_boot) >= 10:
+        te_ci = (
+            float(np.percentile(te_boot, 100 * alpha / 2)),
+            float(np.percentile(te_boot, 100 * (1 - alpha / 2))),
+        )
+    else:
+        te_ci = (np.nan, np.nan)
 
     nde = EffectEstimate(
         estimand="NDE",
@@ -335,8 +345,18 @@ def estimate_nde_nie(
         n_bootstrap=len(nie_boot),
         assumptions=_NDE_NIE_ASSUMPTIONS,
     )
+    te = EffectEstimate(
+        estimand="TE",
+        effect=te_point,
+        ci_lower=te_ci[0],
+        ci_upper=te_ci[1],
+        scale="difference",
+        treatment_values=(treatment_value, control_value),
+        n_bootstrap=len(te_boot),
+        assumptions=_TE_ASSUMPTIONS,
+    )
 
-    return nde, nie
+    return nde, nie, te
 
 
 def _nde_nie_point(
@@ -349,7 +369,7 @@ def _nde_nie_point(
     control_value,
     n_mc_samples: int,
     rng: np.random.Generator,
-) -> tuple[float, float]:
+) -> tuple[float, float, float]:
     """Compute NDE and NIE point estimates via Monte Carlo.
 
     Strategy (VanderWeele regression approach for GLMs):
@@ -378,17 +398,22 @@ def _nde_nie_point(
         mediator_col, mediator_value=None
     )
 
-    # Sample M from p(M | A=a*, C) — n_mc_samples draws per observation
+    # Sample M from p(M | A=a*, C) for NDE computation
     m_samples_control = mediator_model.sample(
         data, treatment_col, control_value,
+        n_samples=n_mc_samples, rng=rng
+    )  # shape: (n_mc_samples, n_obs)
+
+    # Sample M from p(M | A=a, C) for TE computation (marginal)
+    m_samples_treat = mediator_model.sample(
+        data, treatment_col, treatment_value,
         n_samples=n_mc_samples, rng=rng
     )  # shape: (n_mc_samples, n_obs)
 
     # For NDE: average E[Y|A=a, M=m, C] over M~p(M|A=a*, C)
     y_treat_given_control_m = np.zeros(n_obs)
     for k in range(n_mc_samples):
-        m_k = m_samples_control[k]  # shape (n_obs,)
-        # Must predict observation by observation (different M for each obs)
+        m_k = m_samples_control[k]
         cf_data = data.copy()
         cf_data[mediator_col] = m_k
         cf_data[treatment_col] = treatment_value
@@ -396,17 +421,41 @@ def _nde_nie_point(
         y_treat_given_control_m += preds
     y_treat_given_control_m /= n_mc_samples
 
+    # For TE: E[Y(a)] = average E[Y|A=a, M~p(M|A=a,C), C] over population
+    # This correctly marginalises over the treatment-specific mediator distribution
+    y_treat_marginal = np.zeros(n_obs)
+    for k in range(n_mc_samples):
+        m_k = m_samples_treat[k]
+        cf_data = data.copy()
+        cf_data[mediator_col] = m_k
+        cf_data[treatment_col] = treatment_value
+        preds = _predict_with_mediator_array(outcome_model, cf_data, treatment_col, mediator_col)
+        y_treat_marginal += preds
+    y_treat_marginal /= n_mc_samples
+
+    # E[Y(a*)] = average E[Y|A=a*, M~p(M|A=a*,C), C]
+    # Reuse m_samples_control for efficiency
+    y_ctrl_marginal = np.zeros(n_obs)
+    for k in range(n_mc_samples):
+        m_k = m_samples_control[k]
+        cf_data = data.copy()
+        cf_data[mediator_col] = m_k
+        cf_data[treatment_col] = control_value
+        preds = _predict_with_mediator_array(outcome_model, cf_data, treatment_col, mediator_col)
+        y_ctrl_marginal += preds
+    y_ctrl_marginal /= n_mc_samples
+
     if outcome_model.has_log_link:
         # All effects on log-mean scale
-        te = float(np.log(np.mean(y_treat_obs)) - np.log(np.mean(y_control_obs)))
-        nde = float(np.log(np.mean(y_treat_given_control_m)) - np.log(np.mean(y_control_obs)))
+        te = float(np.log(np.mean(y_treat_marginal)) - np.log(np.mean(y_ctrl_marginal)))
+        nde = float(np.log(np.mean(y_treat_given_control_m)) - np.log(np.mean(y_ctrl_marginal)))
         nie = te - nde
     else:
-        te = float(np.mean(y_treat_obs) - np.mean(y_control_obs))
-        nde = float(np.mean(y_treat_given_control_m) - np.mean(y_control_obs))
+        te = float(np.mean(y_treat_marginal) - np.mean(y_ctrl_marginal))
+        nde = float(np.mean(y_treat_given_control_m) - np.mean(y_ctrl_marginal))
         nie = te - nde
 
-    return nde, nie
+    return nde, nie, te
 
 
 def _predict_with_mediator_array(

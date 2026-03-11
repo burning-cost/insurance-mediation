@@ -76,7 +76,7 @@ _REPORT_TEMPLATE = """<!DOCTYPE html>
 
 <h2>1. Causal DAG</h2>
 <p>The analysis assumes the following directed acyclic graph (DAG):</p>
-{{ dag_svg }}
+{{ dag_svg | safe }}
 <p>The mediator ({{ mediator }}) is a legitimate risk-rating factor.
 The question is: what proportion of the treatment ({{ treatment }}) effect on
 {{ outcome }} operates <em>through</em> the mediator pathway versus directly?</p>

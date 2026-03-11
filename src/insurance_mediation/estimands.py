@@ -180,6 +180,12 @@ class MediationResult:
             If this CDE level was not pre-computed. Call MediationAnalysis.fit()
             with cde_levels parameter.
         """
+        # Check estimates exist first
+        if not self._cde_estimates:
+            raise RuntimeError(
+                "No CDE estimates available. Call MediationAnalysis.fit() first."
+            )
+
         if mediator_level is None:
             # Use population mean
             if self._data is not None:
@@ -187,12 +193,6 @@ class MediationResult:
                 mediator_level = float(np.mean(self._data[self.mediator]))
             else:
                 raise RuntimeError("mediator_level required when data not stored")
-
-        # Find nearest pre-computed level
-        if not self._cde_estimates:
-            raise RuntimeError(
-                "No CDE estimates available. Call MediationAnalysis.fit() first."
-            )
         nearest = min(self._cde_estimates.keys(), key=lambda k: abs(k - mediator_level))
         return self._cde_estimates[nearest]
 
