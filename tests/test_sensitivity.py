@@ -100,7 +100,7 @@ class TestComputeSensitivity:
             treatment_col="treatment",
             covariates=["confounder"],
         )
-        nde, nie = estimate_nde_nie(
+        nde, nie, _te = estimate_nde_nie(
             data=data,
             outcome_model=outcome_model,
             mediator_model=mediator_model,

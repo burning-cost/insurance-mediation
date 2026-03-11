@@ -265,7 +265,7 @@ class TestTotalEffect:
 class TestNDENIE:
     def test_nde_sign_positive(self, fitted_poisson_models):
         data, outcome_model, mediator_model = fitted_poisson_models
-        nde, nie = estimate_nde_nie(
+        nde, nie, _te = estimate_nde_nie(
             data=data,
             outcome_model=outcome_model,
             mediator_model=mediator_model,
@@ -281,7 +281,7 @@ class TestNDENIE:
 
     def test_nie_sign_positive(self, fitted_poisson_models):
         data, outcome_model, mediator_model = fitted_poisson_models
-        nde, nie = estimate_nde_nie(
+        nde, nie, _te = estimate_nde_nie(
             data=data,
             outcome_model=outcome_model,
             mediator_model=mediator_model,
@@ -296,9 +296,9 @@ class TestNDENIE:
         assert nie.effect > 0
 
     def test_nde_nie_sum_approx_te(self, fitted_poisson_models):
-        """NDE + NIE ≈ TE (decomposition identity, subject to MC error)."""
+        """NDE + NIE = TE exactly (by construction: NIE = TE - NDE)."""
         data, outcome_model, mediator_model = fitted_poisson_models
-        nde, nie = estimate_nde_nie(
+        nde, nie, te = estimate_nde_nie(
             data=data,
             outcome_model=outcome_model,
             mediator_model=mediator_model,
@@ -310,21 +310,12 @@ class TestNDENIE:
             n_bootstrap=30,
             rng=np.random.default_rng(1),
         )
-        te = estimate_total_effect(
-            data=data,
-            outcome_model=outcome_model,
-            treatment_col="treatment",
-            mediator_col="mediator",
-            treatment_value=1,
-            control_value=0,
-            n_bootstrap=30,
-        )
-        # NDE + NIE should be close to TE (by construction: NIE = TE - NDE)
-        assert abs((nde.effect + nie.effect) - te.effect) < 0.01
+        # NDE + NIE = TE exactly (by construction: NIE = TE - NDE)
+        assert abs((nde.effect + nie.effect) - te.effect) < 1e-9
 
     def test_nde_magnitude(self, fitted_poisson_models):
         data, outcome_model, mediator_model = fitted_poisson_models
-        nde, nie = estimate_nde_nie(
+        nde, nie, _te = estimate_nde_nie(
             data=data,
             outcome_model=outcome_model,
             mediator_model=mediator_model,
@@ -340,7 +331,7 @@ class TestNDENIE:
 
     def test_nie_magnitude(self, fitted_poisson_models):
         data, outcome_model, mediator_model = fitted_poisson_models
-        nde, nie = estimate_nde_nie(
+        nde, nie, _te = estimate_nde_nie(
             data=data,
             outcome_model=outcome_model,
             mediator_model=mediator_model,
@@ -356,7 +347,7 @@ class TestNDENIE:
 
     def test_nde_ci_valid(self, fitted_poisson_models):
         data, outcome_model, mediator_model = fitted_poisson_models
-        nde, nie = estimate_nde_nie(
+        nde, nie, _te = estimate_nde_nie(
             data=data,
             outcome_model=outcome_model,
             mediator_model=mediator_model,
@@ -372,7 +363,7 @@ class TestNDENIE:
 
     def test_nde_estimand_type(self, fitted_poisson_models):
         data, outcome_model, mediator_model = fitted_poisson_models
-        nde, nie = estimate_nde_nie(
+        nde, nie, _te = estimate_nde_nie(
             data=data,
             outcome_model=outcome_model,
             mediator_model=mediator_model,
@@ -388,7 +379,7 @@ class TestNDENIE:
 
     def test_nde_assumptions_listed(self, fitted_poisson_models):
         data, outcome_model, mediator_model = fitted_poisson_models
-        nde, nie = estimate_nde_nie(
+        nde, nie, _te = estimate_nde_nie(
             data=data,
             outcome_model=outcome_model,
             mediator_model=mediator_model,
@@ -403,7 +394,7 @@ class TestNDENIE:
 
     def test_gaussian_nde_nie(self, fitted_gaussian_models):
         data, outcome_model, mediator_model = fitted_gaussian_models
-        nde, nie = estimate_nde_nie(
+        nde, nie, _te = estimate_nde_nie(
             data=data,
             outcome_model=outcome_model,
             mediator_model=mediator_model,
